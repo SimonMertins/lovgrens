@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OBD Felkodsläsare</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f5f5f5;
+      padding: 40px;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      text-align: center;
+    }
+
+    input, button {
+      display: block;
+      width: 100%;
+      padding: 10px;
+      font-size: 16px;
+      margin-bottom: 10px;
+    }
+
+    button {
+      background-color: #0078d7;
+      color: white;
+      border: none;
+      cursor: pointer;
+      border-radius: 5px;
+    }
+
+    button:hover {
+      background-color: #005fa3;
+    }
+
+    #result {
+      margin-top: 20px;
+      padding: 15px;
+      background: white;
+      border-radius: 5px;
+      min-height: 40px;
+    }
+  </style>
+</head>
+<body>
+  <h1>OBD Felkodsläsare</h1>
+  <p>Skriv in din felkod nedan för att få en beskrivning och möjliga lösningar:</p>
+
+  <input type="text" id="faultCodeInput" placeholder="Ex: P0420" />
+  <button id="searchButton">Sök</button>
+
+  <div id="result"></div>
+
+  <!-- Koppling till din JS-fil -->
+  <script src="assets/js/main.js"></script>
+</body>
+</html>
