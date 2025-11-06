@@ -3,37 +3,87 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Lovgrens OBD Diagnos</title>
-  <link rel="stylesheet" href="assets/style.css" />
+  <title>Lovgrens Diagnostik</title>
+  <link rel="stylesheet" href="assets/style-index.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
-  <div class="container">
-    <h1>🔧 Lovgrens OBD Diagnos</h1>
-    <p>Skriv in din felkod, bilmärke och årsmodell för att få en professionell diagnos.</p>
-
-    <form id="codeForm">
-      <label for="errorCode">Felkod (t.ex. P0420):</label>
-      <input type="text" id="errorCode" required />
-
-      <label for="carBrand">Bilmärke:</label>
-      <input type="text" id="carBrand" required />
-
-      <label for="carYear">Årsmodell:</label>
-      <input type="number" id="carYear" required />
-
-      <button type="submit">🔍 Sök</button>
-    </form>
-
-    <div id="loading" class="spinner" style="display:none;">
-      <div class="loader"></div>
-      <p>Söker efter lösning...</p>
+  <!-- NAVIGATION -->
+  <nav class="navbar">
+    <div class="container nav-container">
+      <h1 class="logo">Lovgrens Diagnostik</h1>
+      <ul class="nav-links">
+        <li><a href="#features">Funktioner</a></li>
+        <li><a href="#pricing">Priser</a></li>
+        <li><a href="#contact">Kontakt</a></li>
+      </ul>
     </div>
+  </nav>
 
-    <div id="result"></div>
-    <div id="history" class="history"></div>
-  </div>
+  <!-- HERO SECTION -->
+  <section class="hero">
+    <div class="container hero-content">
+      <div class="hero-text">
+        <h2>AI-baserad bildiagnos för verkstäder</h2>
+        <p>Lovgrens Diagnostik hjälper dig att snabbt förstå och lösa OBD2-felkoder med tydliga förklaringar, orsaker och åtgärder – direkt i webbläsaren.</p>
+        <a href="app.html" class="btn-primary">Prova gratis</a>
+      </div>
+      <div class="hero-image">
+        <img src="assets/laptop.png" alt="Laptop med diagnostikprogram">
+      </div>
+    </div>
+  </section>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="assets/js/main.js"></script>
+  <!-- FEATURES SECTION -->
+  <section id="features" class="features">
+    <div class="container">
+      <h3>Varför välja Lovgrens Diagnostik?</h3>
+      <div class="feature-grid">
+        <div class="feature">
+          <h4>⚡ Snabb diagnos</h4>
+          <p>AI analyserar felkoden på sekunder och ger tydliga förklaringar.</p>
+        </div>
+        <div class="feature">
+          <h4>🔧 Tydliga åtgärder</h4>
+          <p>Steg-för-steg guider som både nybörjare och proffs kan följa.</p>
+        </div>
+        <div class="feature">
+          <h4>💰 Prisförslag i SEK</h4>
+          <p>Få en uppskattad kostnad direkt – perfekt för verkstadsplanering.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PRICING -->
+  <section id="pricing" class="pricing">
+    <div class="container">
+      <h3>Enkel och rättvis prissättning</h3>
+      <div class="price-card">
+        <h4>Prova gratis</h4>
+        <p>5 kostnadsfria sökningar</p>
+        <hr>
+        <p><strong>199 kr/mån</strong></p>
+        <p>Obegränsad användning</p>
+        <a href="app.html" class="btn-primary">Kom igång</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- CONTACT / FOOTER -->
+  <footer id="contact">
+    <div class="container footer-content">
+      <div class="footer-left">
+        <h4>Lovgrens Diagnostik</h4>
+        <p>Smarta AI-lösningar för bilverkstäder.</p>
+      </div>
+      <div class="footer-right">
+        <p>📧 info@lovgrens.se</p>
+        <p>🌐 www.lovgrens.se</p>
+      </div>
+    </div>
+    <p class="footer-bottom">© 2025 Lovgrens Diagnostik – Alla rättigheter reserverade</p>
+  </footer>
 </body>
 </html>
+

@@ -1,3 +1,4 @@
+// assets/js/app.js
 document.addEventListener("DOMContentLoaded", () => {
     const form = document.getElementById("codeForm");
     const resultDiv = document.getElementById("result");
@@ -12,26 +13,26 @@ document.addEventListener("DOMContentLoaded", () => {
       const errorCode = document.getElementById("errorCode").value.trim();
       const carBrand = document.getElementById("carBrand").value.trim();
       const carYear = document.getElementById("carYear").value.trim();
+      const engineCode = document.getElementById("engineCode") ? document.getElementById("engineCode").value.trim() : "";
   
       resultDiv.innerHTML = "";
-      loadingDiv.style.display = "flex";
+      loadingDiv.style.display = "block";
   
       if (!errorCode || !carBrand || !carYear) {
         loadingDiv.style.display = "none";
-        resultDiv.innerHTML = `<p style="color:red;">⚠️ Fyll i alla fält innan du söker.</p>`;
+        resultDiv.innerHTML = `<p style="color:red;">⚠️ Fyll i alla obligatoriska fält.</p>`;
         return;
       }
   
-      await runSearch({ errorCode, carBrand, carYear });
+      await runSearch({ errorCode, carBrand, carYear, engineCode });
     });
   
-    // --- KÖR SÖKNING ---
-    async function runSearch({ errorCode, carBrand, carYear }) {
+    async function runSearch({ errorCode, carBrand, carYear, engineCode = "" }) {
       try {
         const response = await fetch("http://localhost:3000/api/obd/diagnose", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ errorCode, carBrand, carYear }),
+          body: JSON.stringify({ errorCode, carBrand, carYear, engineCode }),
         });
   
         if (!response.ok) throw new Error(`Serverfel: ${response.status}`);
@@ -49,79 +50,79 @@ document.addEventListener("DOMContentLoaded", () => {
             .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
             .replace(/\n/g, "<br>");
   
-          // 🔍 Leta efter rubriken “Föreslagna åtgärder”
-          const regex = /<strong>Föreslagna åtgärder:<\/strong>([\s\S]*)/i;
-          const match = formatted.match(regex);
+          // --- Hitta och infoga åtgärdssektion ---
+          const actionsRegex = /(?:\d+\.\s*)?(?:<strong>)?Föreslagna åtgärder:?<\/strong>?([\s\S]*)/i;
+          const match = formatted.match(actionsRegex);
   
           if (match) {
             const actions = match[1].trim();
             formatted = formatted.replace(
-              regex,
+              actionsRegex,
               `<strong>Föreslagna åtgärder:</strong>
                <button class="toggle-btn">👀 Visa åtgärder ▼</button>
                <div class="steps">${actions}</div>`
             );
           }
   
+          // --- Visa resultatkort ---
           resultDiv.innerHTML = `
-            <header id="reportHeader">
-              <img src="assets/logo.png" alt="Lovgrens Logotyp" onerror="this.style.display='none'">
-              <h1>Lovgrens Diagnosrapport</h1>
-              <p>${new Date().toLocaleString("sv-SE")}</p>
-            </header>
-  
-            <h3>Felkod: ${errorCode}</h3>
-            <p><strong>${carBrand} ${carYear}</strong></p>
-            <div class="answer">${formatted}</div>
-  
-            <footer id="reportFooter">
-              <p>🔧 Genererad av Lovgrens AI Diagnostik</p>
-            </footer>
-  
-            <button id="printPDF" class="print-btn">🧾 Spara som PDF</button>
+            <div class="diagnosis-card">
+              <header class="diagnosis-header">
+                <div>
+                  <h3>Felkod: ${errorCode}</h3>
+                  <p><strong>${carBrand} ${carYear}</strong>${engineCode ? ` • Motorkod: ${engineCode}` : ""}</p>
+                </div>
+                <button id="printPDF" class="pdf-btn">
+                  <span class="icon">🧾</span> Spara som PDF
+                </button>
+              </header>
+              <div class="diagnosis-body">${formatted}</div>
+            </div>
           `;
   
-          // --- 📄 SKAPA PDF MED AUTOMATISKT FILNAMN ---
-          document.getElementById("printPDF").addEventListener("click", async () => {
-            const { jsPDF } = window.jspdf;
-            const doc = new jsPDF("p", "pt", "a4");
-  
-            const pdfName = `Lovgrens_${errorCode}_${carBrand}${carYear}.pdf`;
-            const date = new Date().toLocaleString("sv-SE");
-  
-            doc.setFont("Helvetica", "bold");
-            doc.setFontSize(20);
-            doc.text("Lovgrens Diagnosrapport", 40, 50);
-  
-            doc.setFontSize(10);
-            doc.text(`Genererad: ${date}`, 40, 70);
-            doc.text(`Bilmärke: ${carBrand}`, 40, 85);
-            doc.text(`Årsmodell: ${carYear}`, 200, 85);
-            doc.text(`Felkod: ${errorCode}`, 40, 100);
-  
-            const resultText = data.result.replace(/\*\*/g, "").replace(/\n/g, "\n\n");
-  
-            doc.setFont("Helvetica", "normal");
-            doc.setFontSize(11);
-            doc.text(resultText, 40, 130, { maxWidth: 520 });
-  
-            doc.save(pdfName);
-          });
-  
-          // --- Toggle-knapp med pil och text ---
-          const toggleBtn = document.querySelector(".toggle-btn");
+          // --- Toggle Visa/Dölj åtgärder ---
+          const toggleButton = document.querySelector(".toggle-btn");
           const stepsDiv = document.querySelector(".steps");
-          if (toggleBtn && stepsDiv) {
-            stepsDiv.classList.remove("show");
-            toggleBtn.addEventListener("click", () => {
-              const isVisible = stepsDiv.classList.toggle("show");
-              toggleBtn.textContent = isVisible
+          if (toggleButton && stepsDiv) {
+            toggleButton.addEventListener("click", () => {
+              stepsDiv.classList.toggle("show");
+              const isVisible = stepsDiv.classList.contains("show");
+              toggleButton.innerHTML = isVisible
                 ? "🙈 Dölj åtgärder ▲"
                 : "👀 Visa åtgärder ▼";
             });
           }
   
-          saveSearch({ errorCode, carBrand, carYear });
+          // --- PDF-knapp ---
+          document.getElementById("printPDF").addEventListener("click", () => {
+            if (window.jspdf && window.jspdf.jsPDF) {
+              const { jsPDF } = window.jspdf;
+              const doc = new jsPDF("p", "pt", "a4");
+              const pdfName = `Lovgrens_${errorCode}_${carBrand}${carYear}.pdf`;
+              const date = new Date().toLocaleString("sv-SE");
+  
+              doc.setFont("Helvetica", "bold");
+              doc.setFontSize(18);
+              doc.text("Lovgrens Diagnosrapport", 40, 50);
+              doc.setFontSize(10);
+              doc.setFont("Helvetica", "normal");
+              doc.text(`Genererad: ${date}`, 40, 68);
+              doc.text(`Bilmärke: ${carBrand}`, 40, 84);
+              doc.text(`Årsmodell: ${carYear}`, 200, 84);
+              if (engineCode) doc.text(`Motorkod: ${engineCode}`, 360, 84);
+              doc.text(`Felkod: ${errorCode}`, 40, 100);
+  
+              const resultText = data.result.replace(/\*\*/g, "").replace(/\n/g, "\n\n");
+              doc.setFontSize(11);
+              doc.text(resultText, 40, 130, { maxWidth: 520 });
+              doc.save(pdfName);
+            } else {
+              window.print();
+            }
+          });
+  
+          // --- Spara & uppdatera historik ---
+          saveSearch({ errorCode, carBrand, carYear, engineCode });
           updateHistoryDisplay();
         } else {
           resultDiv.innerHTML = `<p>Inget svar kunde hämtas just nu.</p>`;
@@ -133,25 +134,25 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
   
-    // --- SPARA SÖKNING ---
+    // --- Historikhantering ---
     function saveSearch(entry) {
       const history = JSON.parse(localStorage.getItem("obdHistory")) || [];
       const exists = history.find(
         (h) =>
           h.errorCode === entry.errorCode &&
           h.carBrand === entry.carBrand &&
-          h.carYear === entry.carYear
+          h.carYear === entry.carYear &&
+          (h.engineCode || "") === (entry.engineCode || "")
       );
       if (!exists) {
         const date = new Date();
         entry.date = date.toLocaleString("sv-SE");
         history.unshift(entry);
-        if (history.length > 5) history.pop();
+        if (history.length > 8) history.pop();
         localStorage.setItem("obdHistory", JSON.stringify(history));
       }
     }
   
-    // --- VISA HISTORIK ---
     function updateHistoryDisplay() {
       const history = JSON.parse(localStorage.getItem("obdHistory")) || [];
       if (history.length === 0) {
@@ -163,8 +164,8 @@ document.addEventListener("DOMContentLoaded", () => {
         .map(
           (h, i) => `
           <li data-index="${i}">
-            ${i + 1}. ${h.carBrand} ${h.carYear} — <strong>${h.errorCode}</strong>
-            <small>(${h.date})</small>
+            ${i + 1}. ${h.carBrand} ${h.carYear}${h.engineCode ? ` (${h.engineCode})` : ""} — <strong>${h.errorCode}</strong>
+            <small> (${h.date})</small>
           </li>`
         )
         .join("");
@@ -172,7 +173,7 @@ document.addEventListener("DOMContentLoaded", () => {
       historyDiv.innerHTML = `
         <h4>🕓 Senaste sökningar</h4>
         <ul id="historyList">${listItems}</ul>
-        <button id="clearHistory">🧹 Rensa historik</button>
+        <button id="clearHistory" class="history-clear">🧹 Rensa historik</button>
       `;
   
       document.querySelectorAll("#historyList li").forEach((item) => {
@@ -184,20 +185,23 @@ document.addEventListener("DOMContentLoaded", () => {
             document.getElementById("errorCode").value = chosen.errorCode;
             document.getElementById("carBrand").value = chosen.carBrand;
             document.getElementById("carYear").value = chosen.carYear;
+            if (document.getElementById("engineCode"))
+              document.getElementById("engineCode").value = chosen.engineCode || "";
             runSearch(chosen);
           }
         });
       });
   
-      document
-        .getElementById("clearHistory")
-        .addEventListener("click", () => clearHistory());
-    }
-  
-    // --- RADERA HISTORIK ---
-    function clearHistory() {
-      localStorage.removeItem("obdHistory");
-      updateHistoryDisplay();
+      const clearBtn = document.getElementById("clearHistory");
+      if (clearBtn) {
+        clearBtn.addEventListener("click", () => {
+          localStorage.removeItem("obdHistory");
+          updateHistoryDisplay();
+        });
+      }
     }
   });
+  
+  
+  
   

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lovgrens Diagnostik – Diagnosverktyg</title>
+  <link rel="stylesheet" href="assets/style-app.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <!-- HEADER -->
+  <header class="app-header">
+    <div class="container">
+      <h1>Lovgrens Diagnostik</h1>
+      <a href="index.html" class="back-link">← Tillbaka till startsidan</a>
+    </div>
+  </header>
+
+  <!-- MAIN CONTENT -->
+  <main class="container app-container">
+    <h2>OBD2 Felkodssökning</h2>
+    <p>Ange bilens uppgifter och felkod för att få en AI-genererad diagnos.</p>
+
+    <form id="codeForm">
+      <label for="errorCode">Felkod</label>
+      <input type="text" id="errorCode" placeholder="Ex: P0420" required>
+
+      <label for="carBrand">Bilmärke</label>
+      <input type="text" id="carBrand" placeholder="Ex: Volvo" required>
+
+      <label for="carYear">Årsmodell</label>
+      <input type="number" id="carYear" placeholder="Ex: 2018" required>
+
+      <label for="engineCode">Motorkod (valfritt)</label>
+      <input type="text" id="engineCode" placeholder="Ex: B4204T7">
+
+      <button type="submit" class="btn-primary">Sök felkod</button>
+    </form>
+
+    <div id="loading" class="spinner" style="display:none;">
+      <div class="loader"></div>
+      <p>Analyserar felkod...</p>
+    </div>
+
+    <div id="result"></div>
+    <!-- HISTORIK -->
+<section class="history-container">
+    <h3 class="history-title">📜 Sökhistorik</h3>
+    <p class="history-subtitle">Se dina senaste diagnoser och klicka för att söka igen.</p>
+    <div id="history"></div>
+  </section>
+  </main>
+
+  <footer>
+    <p>© 2025 Lovgrens Diagnostik</p>
+  </footer>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="assets/js/app.js"></script>
+</body>
+</html>
