@@ -2,6 +2,8 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import fs from "fs";
+import path from "path";
 import OpenAI from "openai";
 
 dotenv.config();
@@ -12,98 +14,119 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// --- Kolla API-nyckeln ---
 if (!process.env.OPENAI_API_KEY) {
-  console.error("❌ Ingen OpenAI API-nyckel i .env-filen!");
+  console.error("❌ Ingen OpenAI API-nyckel i .env!");
   process.exit(1);
 }
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// --- Huvudroute för OBD-diagnos ---
+// Skapa loggmapp
+const logDir = path.resolve("logs");
+if (!fs.existsSync(logDir)) fs.mkdirSync(logDir);
+
+// 🔧 Route
 app.post("/api/obd/diagnose", async (req, res) => {
   const { errorCode, carBrand, carYear, engineCode } = req.body;
 
-  // Validera input
   if (!errorCode || !carBrand || !carYear) {
-    return res.status(400).json({ error: "Alla obligatoriska fält måste fyllas i (felkod, bilmärke, årsmodell)." });
+    return res.status(400).json({ error: "Fyll i felkod, bilmärke och årsmodell." });
   }
 
-  // Bygg AI-prompten
+  // 🧠 Förbättrad prompt
   const prompt = `
-Du är en professionell bilmekaniker och diagnostekniker med expertkunskap i OBD2-felkoder och moderna fordonssystem.
-Du ska agera som en teknisk rådgivare för en verkstad som felsöker en bil.
+Du är en erfaren bilmekaniker med expertkunskap inom OBD2-diagnostik, elektronik och felsökning.
+Analysera informationen nedan och ge ett tekniskt korrekt, strukturerat och tydligt svar.
 
-Analysera följande data och skriv ett **verkstadsanpassat felsökningsprotokoll**:
+Felkod: ${errorCode}
+Bilmärke: ${carBrand}
+Årsmodell: ${carYear}
+${engineCode ? `Motorkod: ${engineCode}` : ""}
 
-- Felkod: ${errorCode}
-- Bilmärke: ${carBrand}
-- Årsmodell: ${carYear}
-${engineCode ? `- Motorkod: ${engineCode}` : ""}
+Svara alltid i detta format:
 
-### Viktigt:
-1. Identifiera vilken **systemkategori** felkoden tillhör utifrån dess prefix:
-   - **P0xxx / P1xxx:** Motor / Drivlina / Avgassystem
-   - **C0xxx / C1xxx:** Chassi (ABS, styrning, bromsar)
-   - **B0xxx / B1xxx:** Kaross (airbag, dörrar, klimatsystem)
-   - **U0xxx / U1xxx:** Kommunikationsnätverk (CAN, ECU, sensorer)
-2. Skriv svaret på **tydlig, teknisk svenska**, anpassad för yrkespersoner.
-3. Undvik prisuppgifter eller uppskattningar.
+1. **Förklaring:** Vad betyder felkoden?
+2. **Vanliga orsaker:** Lista realistiska orsaker för ${carBrand} ${carYear}${engineCode ? ` (${engineCode})` : ""}.
+3. **Föreslagna åtgärder:** Steg-för-steg felsökning och reparation (både för nybörjare och mekaniker).
+4. **Ungefärlig kostnad:** Rimligt prisintervall i SEK.
+  `;
 
----
+  async function runModel(modelName) {
+    console.log(`⚙️ Försöker med ${modelName} ...`);
+    const params = {
+      model: modelName,
+      messages: [{ role: "user", content: prompt }],
+    };
 
-### Format för svaret:
+    if (modelName === "gpt-5") {
+      params.max_completion_tokens = 900;
+      params.temperature = 1;
+    } else {
+      params.max_tokens = 900;
+      params.temperature = 0.6;
+    }
 
-1. **System & kodbeskrivning**
-   Identifiera vilket system felkoden hör till (ex. “Motorstyrsystem - syresensor bank 1”)  
-   och ge en kort, teknisk förklaring av felet.
-
-2. **Trolig grundorsak**
-   Beskriv vilka komponenter, signaler eller system som oftast orsakar denna kod  
-   för just ${carBrand} ${carYear}${engineCode ? ` (${engineCode})` : ""}.  
-   Prioritera verkliga scenarier som förekommer i verkstäder.
-
-3. **Diagnossteg**
-   Ge en konkret felsökningsplan i numrerad ordning (1., 2., 3. …).  
-   Inkludera mätningar, tester eller visuella kontroller som en mekaniker bör göra.
-   Exempel:  
-   - Kontrollera signalspänning med multimeter.  
-   - Läs livedata i OBD-verktyg.  
-   - Kontrollera kablage och kontaktstycken.  
-   - Utför testkörning efter radering av felkod.
-
-4. **Rekommenderad åtgärd**
-   Ge en kort professionell slutsats — t.ex. “Byt lambdasensor efter katalysatorn om spänningsavvikelse kvarstår.”
-`;
-
+    return await openai.chat.completions.create(params);
+  }
 
   try {
-    console.log(`🔎 Diagnosförfrågan: ${errorCode} (${carBrand} ${carYear}${engineCode ? ` / ${engineCode}` : ""})`);
+    let modelUsed = "gpt-5";
+    let completion;
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.6,
-    });
+    // Först försök GPT-5
+    try {
+      completion = await runModel("gpt-5");
+      const text = completion?.choices?.[0]?.message?.content?.trim();
 
-    const result = completion.choices[0].message.content;
+      if (!text) {
+        console.warn("⚠️ GPT-5 returnerade tomt svar. Faller tillbaka till GPT-4o-mini...");
+        throw new Error("Empty GPT-5 response");
+      }
+    } catch (err) {
+      console.warn("⚠️ GPT-5 misslyckades eller svarade tomt. Byter till GPT-4o-mini...");
+      modelUsed = "gpt-4o-mini";
+      completion = await runModel("gpt-4o-mini");
+    }
+
+    const result = completion?.choices?.[0]?.message?.content?.trim();
+    if (!result) {
+      console.error("⚠️ Tomt resultat även från GPT-4o-mini.");
+      return res.status(500).json({ error: "AI kunde inte generera något svar." });
+    }
+
+    // Tokenloggning
+    const usage = completion.usage;
+    const totalTokens = usage?.total_tokens || 0;
+    const costPer1k = modelUsed === "gpt-5" ? 0.60 : 0.10;
+    const estimatedCost = ((totalTokens / 1000) * costPer1k).toFixed(3);
+
+    console.log("──────────────────────────────────────────────");
+    console.log(`🤖 Modell som användes: ${modelUsed}`);
+    console.log(`🔎 Förfrågan: ${errorCode} (${carBrand} ${carYear}${engineCode ? " / " + engineCode : ""})`);
+    console.log(`📊 Tokens: ${totalTokens}`);
+    console.log(`💰 Intern kostnad: ${estimatedCost} SEK`);
+    console.log("──────────────────────────────────────────────");
+
+    // Logga till fil
+    const logEntry = `[${new Date().toISOString()}] ${carBrand} ${carYear} ${errorCode} ${
+      engineCode ? "(" + engineCode + ")" : ""
+    } - Modell: ${modelUsed} - ${totalTokens} tokens ≈ ${estimatedCost} SEK\n`;
+    fs.appendFileSync(path.join(logDir, "usage.log"), logEntry);
+
+    // Skicka svaret
     res.json({ result });
   } catch (error) {
-    console.error("❌ Fel vid API-anrop:", error);
-    res.status(500).json({
-      error: "Ett fel uppstod vid API-anropet. Kontrollera din OpenAI-nyckel eller serveranslutning.",
-    });
+    console.error("❌ Allvarligt fel vid AI-anrop:", error);
+    res.status(500).json({ error: "Ett oväntat fel uppstod vid AI-anropet." });
   }
 });
 
-// --- Testroute ---
+// Testroute
 app.get("/", (req, res) => {
   res.send("🚗 Lovgrens Diagnostik API är igång!");
 });
 
-// --- Starta servern ---
+// Starta server
 app.listen(PORT, () => {
   console.log("──────────────────────────────────────────────");
   console.log(`🚀 Servern körs på port ${PORT}`);
@@ -111,4 +134,3 @@ app.listen(PORT, () => {
   console.log("🔑 API-key laddad:", process.env.OPENAI_API_KEY ? "✅" : "❌");
   console.log("──────────────────────────────────────────────");
 });
-
