@@ -1,61 +1,121 @@
 <!DOCTYPE html>
 <html lang="sv">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Lovgrens Diagnostik – Diagnosverktyg</title>
-  <link rel="stylesheet" href="assets/style-app.css">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Lovgrens Diagnostik — App</title>
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="assets/style-app.css" />
+
+  <!-- Google Font -->
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <!-- jsPDF -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
 </head>
 <body>
-  <!-- HEADER -->
   <header class="app-header">
-    <div class="container">
-      <h1>Lovgrens Diagnostik</h1>
-      <a href="index.html" class="back-link">← Tillbaka till startsidan</a>
+    <div class="container header-row">
+      <div class="brand">
+        <h1>Lovgrens Diagnostik</h1>
+        <p class="sub">AI-baserad felsökning & support</p>
+      </div>
+      <a class="back-link" href="index.html">← Till startsidan</a>
     </div>
   </header>
 
-  <!-- MAIN CONTENT -->
-  <main class="container app-container">
-    <h2>OBD2 Felkodssökning</h2>
-    <p>Ange bilens uppgifter och felkod för att få en AI-genererad diagnos.</p>
+  <main class="container app-grid">
+    <!-- LEFT: Diagnos -->
+    <section class="panel diagnose-panel">
+      <h2>OBD2 - Felkodssök</h2>
+      <p class="muted">Ange felkod(er), bilmärke, årsmodell och valfri motorkod.</p>
 
-    <form id="codeForm">
-      <label for="errorCode">Felkod</label>
-      <input type="text" id="errorCode" placeholder="Ex: P0420" required>
+      <form id="codeForm" class="form">
+        <div class="form-row">
+          <label for="errorCode">Felkod(er)</label>
+          <input type="text" id="errorCode" placeholder="Ex: P0420, P0171" required>
+        </div>
 
-      <label for="carBrand">Bilmärke</label>
-      <input type="text" id="carBrand" placeholder="Ex: Volvo" required>
+        <div class="form-row-inline">
+          <div class="small-input">
+            <label for="carBrand">Bilmärke</label>
+            <input type="text" id="carBrand" placeholder="Ex: Volvo" required>
+          </div>
+          <div class="small-input">
+            <label for="carYear">Årsmodell</label>
+            <input type="number" id="carYear" placeholder="Ex: 2018" required>
+          </div>
+        </div>
 
-      <label for="carYear">Årsmodell</label>
-      <input type="number" id="carYear" placeholder="Ex: 2018" required>
+        <div class="form-row">
+          <label for="engineCode">Motorkod (valfritt)</label>
+          <input type="text" id="engineCode" placeholder="Ex: B4204T7">
+        </div>
 
-      <label for="engineCode">Motorkod (valfritt)</label>
-      <input type="text" id="engineCode" placeholder="Ex: B4204T7">
+        <div class="form-actions">
+          <button type="submit" class="btn-primary">Sök felkod</button>
+          <button type="button" id="exportPDF" class="btn-secondary">Spara som PDF</button>
+        </div>
+      </form>
 
-      <button type="submit" class="btn-primary">Sök felkod</button>
-    </form>
+      <div id="loading" class="spinner" style="display:none;">
+        <div class="loader"></div>
+        <p>Analyserar felkod...</p>
+      </div>
 
-    <div id="loading" class="spinner" style="display:none;">
-      <div class="loader"></div>
-      <p>Analyserar felkod...</p>
-    </div>
+      <div id="result" class="result-box"></div>
 
-    <div id="result"></div>
-    <!-- HISTORIK -->
-<section class="history-container">
-    <h3 class="history-title">📜 Sökhistorik</h3>
-    <p class="history-subtitle">Se dina senaste diagnoser och klicka för att söka igen.</p>
-    <div id="history"></div>
-  </section>
+      <div id="history" class="history-box"></div>
+    </section>
+
+    <!-- RIGHT: Chat -->
+    <aside class="panel chat-panel">
+      <div class="chat-header">
+        <h3>AI-Mekanikern (Pro)</h3>
+        <p class="muted">Pro-användare kan chatta fritt. (Local demo)</p>
+      </div>
+
+      <!-- 🔹 Chat Context -->
+      <div id="chatContext" class="chat-context">
+        <p>💬 Ingen diagnos kopplad ännu.</p>
+        <div class="chat-context-actions">
+          <button id="changeDiagnosis" class="btn-small">Byt diagnos</button>
+          <button id="clearDiagnosis" class="btn-small">Koppla bort</button>
+        </div>
+      </div>
+
+      <div id="chatBox" class="chat-box"></div>
+
+      <form id="chatForm" class="chat-form">
+        <input id="chatInput" type="text" placeholder="Skriv din fråga här..." autocomplete="off" />
+        <button type="submit" class="btn-primary">Skicka</button>
+      </form>
+
+      <div class="chat-actions">
+        <button id="clearChat" class="btn-link">Rensa chatt</button>
+        <button id="exportChat" class="btn-link">Spara chatt (PDF)</button>
+      </div>
+    </aside>
   </main>
 
-  <footer>
-    <p>© 2025 Lovgrens Diagnostik</p>
+  <footer class="footer">
+    <div class="container footer-inner">
+      <div>© 2025 Lovgrens Diagnostik</div>
+      <div>📧 info@lovgrens.se</div>
+    </div>
   </footer>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="assets/js/app.js"></script>
+  <!-- 🔹 Modal -->
+  <div id="diagnosisModal" class="modal hidden">
+    <div class="modal-content">
+      <h3>Välj tidigare diagnos</h3>
+      <ul id="diagnosisList"></ul>
+      <button id="closeModal" class="btn-secondary">Stäng</button>
+    </div>
+  </div>
+
+  <!-- JS -->
+  <script src="assets/js/app.js" defer></script>
 </body>
 </html>
