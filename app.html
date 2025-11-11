@@ -21,6 +21,7 @@
         <h1>Lovgrens Diagnostik</h1>
         <p class="sub">AI-baserad felsökning & support</p>
       </div>
+      <button id="themeToggle" class="theme-toggle">🌙 Mörkt läge</button>
       <a class="back-link" href="index.html">← Till startsidan</a>
     </div>
   </header>
@@ -60,9 +61,9 @@
       </form>
 
       <div id="loading" class="spinner" style="display:none;">
-        <div class="loader"></div>
-        <p>Analyserar felkod...</p>
-      </div>
+        <div class="ai-loader"><span></span><span></span><span></span></div>
+        <p class="loading-text">Analyserar felkod...</p>
+      </div>      
 
       <div id="result" class="result-box"></div>
 
