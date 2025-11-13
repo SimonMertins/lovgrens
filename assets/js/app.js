@@ -1,57 +1,61 @@
-document.addEventListener("DOMContentLoaded", () => {
-    console.log("✅ Lovgrens Diagnostik – app laddad");
+/* =========================================================
+   Lovgrens Diagnostik – Komplett app.js (med chat-kontext)
+   ========================================================= */
+   document.addEventListener("DOMContentLoaded", () => {
+    console.log("🚀 App startar...");
   
-    // === DARK MODE ===
-    const themeToggle = document.getElementById("themeToggle");
-    if (themeToggle) {
-      const currentTheme = localStorage.getItem("theme") || "light";
-      document.body.dataset.theme = currentTheme;
-      updateThemeButton();
-  
-      themeToggle.addEventListener("click", () => {
-        const newTheme =
-          document.body.dataset.theme === "dark" ? "light" : "dark";
-        document.body.dataset.theme = newTheme;
-        localStorage.setItem("theme", newTheme);
-        updateThemeButton();
-      });
-    }
-  
-    function updateThemeButton() {
-      if (!themeToggle) return;
-      themeToggle.textContent =
-        document.body.dataset.theme === "dark"
-          ? "☀️ Ljust läge"
-          : "🌙 Mörkt läge";
-    }
-  
-    // === ELEMENTREFERENSER ===
+    /* -----------------------------------------
+       ELEMENTREFERENSER
+    ----------------------------------------- */
     const form = document.getElementById("codeForm");
     const resultDiv = document.getElementById("result");
     const loadingDiv = document.getElementById("loading");
     const historyDiv = document.getElementById("history");
+  
     const exportPDFBtn = document.getElementById("exportPDF");
+  
+    // Chat
     const chatForm = document.getElementById("chatForm");
     const chatInput = document.getElementById("chatInput");
     const chatBox = document.getElementById("chatBox");
     const clearChatBtn = document.getElementById("clearChat");
     const exportChatBtn = document.getElementById("exportChat");
   
-    // === DATA ===
-    let chatHistory = JSON.parse(localStorage.getItem("chatHistory")) || [];
-    let latestDiagnosis = JSON.parse(localStorage.getItem("latestDiagnosis")) || null;
+    // Dark mode
+    const themeToggle = document.getElementById("themeToggle");
   
-    // === INIT ===
-    updateHistoryDisplay();
-    loadChatHistory();
-    updateChatContext();
+    /* -----------------------------------------
+       LOKAL DATA
+    ----------------------------------------- */
+    let diagnoses = JSON.parse(localStorage.getItem("diagnoses")) || [];
+    let currentDiagnosisId = null;
   
-    // -----------------------------------------------------
-    // 🧠 DIAGNOS – FELKODSSÖKNING
-    // -----------------------------------------------------
+    let chatThreads = JSON.parse(localStorage.getItem("chatThreads")) || {};
+    let currentChat = [];
+  
+    /* -----------------------------------------
+       DARK MODE
+    ----------------------------------------- */
+    function loadTheme() {
+      const saved = localStorage.getItem("theme") || "light";
+      document.body.classList.toggle("dark", saved === "dark");
+      themeToggle.textContent = saved === "dark" ? "☀️" : "🌙";
+    }
+    loadTheme();
+  
+    themeToggle.addEventListener("click", () => {
+      const newTheme = document.body.classList.contains("dark") ? "light" : "dark";
+      document.body.classList.toggle("dark");
+      themeToggle.textContent = newTheme === "dark" ? "☀️" : "🌙";
+      localStorage.setItem("theme", newTheme);
+    });
+  
+    /* -----------------------------------------
+       DIAGNOS – FELKODSÖKNING
+    ----------------------------------------- */
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
-      console.log("🔍 Startar felsökning...");
+      console.log("🔎 Diagnos startar...");
   
       const errorCode = document.getElementById("errorCode").value.trim();
       const carBrand = document.getElementById("carBrand").value.trim();
@@ -63,18 +67,19 @@ document.addEventListener("DOMContentLoaded", () => {
   
       if (!errorCode || !carBrand || !carYear) {
         loadingDiv.style.display = "none";
-        resultDiv.innerHTML = `<p style="color:#d9534f;">⚠️ Fyll i alla fält.</p>`;
+        resultDiv.innerHTML = `<p style="color:#d9534f;">⚠️ Fyll i felkod, märke och årsmodell.</p>`;
         return;
       }
   
       try {
-        const response = await fetch("http://localhost:3000/api/obd/diagnose", {
+        const response = await fetch("http://localhost:3000/api/obb/diagnose", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ errorCode, carBrand, carYear, engineCode }),
         });
   
         if (!response.ok) throw new Error(`Serverfel: ${response.status}`);
+  
         const data = await response.json();
         loadingDiv.style.display = "none";
   
@@ -83,21 +88,31 @@ document.addEventListener("DOMContentLoaded", () => {
           return;
         }
   
-        displayDiagnosis(errorCode, carBrand, carYear, engineCode, data.result);
-        saveSearch({ errorCode, carBrand, carYear, engineCode });
-        updateHistoryDisplay();
-  
-        latestDiagnosis = {
+        // Skapa diagnosobjekt
+        const diag = {
+          id: Date.now().toString(),
           errorCode,
           carBrand,
           carYear,
           engineCode,
           result: data.result,
-          timestamp: new Date().toLocaleString("sv-SE"),
+          date: new Date().toLocaleString("sv-SE"),
         };
-        localStorage.setItem("latestDiagnosis", JSON.stringify(latestDiagnosis));
-        updateChatContext();
-        showNotification("✅ Svar mottaget från AI");
+  
+        diagnoses.unshift(diag);
+        if (diagnoses.length > 30) diagnoses.pop();
+        localStorage.setItem("diagnoses", JSON.stringify(diagnoses));
+  
+        currentDiagnosisId = diag.id;
+  
+        // Skapa ny chattråd för diagnosen
+        chatThreads[currentDiagnosisId] = [];
+        localStorage.setItem("chatThreads", JSON.stringify(chatThreads));
+        loadChatThread();
+  
+        displayDiagnosis(diag);
+        updateHistoryDisplay();
+        showNotification("✅ Diagnos klar!");
       } catch (err) {
         loadingDiv.style.display = "none";
         resultDiv.innerHTML = `<p style="color:#d9534f;">Fel: ${err.message}</p>`;
@@ -105,127 +120,151 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
   
-    // -----------------------------------------------------
-    // 📋 RESULTAT
-    // -----------------------------------------------------
-    function displayDiagnosis(errorCode, carBrand, carYear, engineCode, raw) {
-      const formatted = raw
+    /* -----------------------------------------
+       VISA DIAGNOS
+    ----------------------------------------- */
+    function displayDiagnosis(diag) {
+      let formatted = diag.result
         .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
         .replace(/\n/g, "<br>");
   
+      const actionsRegex =
+        /(Föreslagna åtgärder:|Föreslagna åtgärder<\/strong>:?)([\s\S]*)/i;
+  
+      const match = formatted.match(actionsRegex);
+      if (match) {
+        const header = match[1];
+        const actions = match[2].trim();
+  
+        formatted = formatted.replace(
+          actionsRegex,
+          `${header}
+           <button class="toggle-btn">👀 Visa åtgärder ▼</button>
+           <div class="steps">${actions}</div>`
+        );
+      }
+  
       resultDiv.innerHTML = `
-        <header>
-          <h3>Felkod: ${errorCode}</h3>
-          <p><strong>${carBrand} ${carYear}</strong>${
-        engineCode ? ` — Motorkod: ${engineCode}` : ""
-      }</p>
-        </header>
+        <h3>Felkod: ${diag.errorCode}</h3>
+        <p><strong>${diag.carBrand} ${diag.carYear}</strong>
+           ${diag.engineCode ? `– Motorkod: ${diag.engineCode}` : ""}</p>
+        <p><small>${diag.date}</small></p>
         <div class="answer">${formatted}</div>
       `;
-    }
   
-    // -----------------------------------------------------
-    // 📜 HISTORIK
-    // -----------------------------------------------------
-    function saveSearch(entry) {
-      const history = JSON.parse(localStorage.getItem("obdHistory")) || [];
-      const exists = history.find(
-        (h) =>
-          h.errorCode === entry.errorCode &&
-          h.carBrand === entry.carBrand &&
-          h.carYear === entry.carYear &&
-          (h.engineCode || "") === (entry.engineCode || "")
-      );
-      if (!exists) {
-        entry.date = new Date().toLocaleString("sv-SE");
-        history.unshift(entry);
-        if (history.length > 8) history.pop();
-        localStorage.setItem("obdHistory", JSON.stringify(history));
+      const toggleBtn = resultDiv.querySelector(".toggle-btn");
+      const steps = resultDiv.querySelector(".steps");
+  
+      if (toggleBtn) {
+        toggleBtn.addEventListener("click", () => {
+          const visible = steps.classList.toggle("show");
+          toggleBtn.textContent = visible
+            ? "🙈 Dölj åtgärder ▲"
+            : "👀 Visa åtgärder ▼";
+        });
       }
     }
   
+    /* -----------------------------------------
+       HISTORIK – Klicka för att visa gammal diagnos
+    ----------------------------------------- */
     function updateHistoryDisplay() {
-      const history = JSON.parse(localStorage.getItem("obdHistory")) || [];
-      if (!history.length) {
+      if (!diagnoses.length) {
         historyDiv.innerHTML = "";
         return;
       }
   
-      const items = history
+      const list = diagnoses
         .map(
-          (h, i) =>
-            `<li data-index="${i}">${i + 1}. ${h.carBrand} ${h.carYear}${
-              h.engineCode ? ` (${h.engineCode})` : ""
-            } — <strong>${h.errorCode}</strong> <small>(${h.date})</small></li>`
+          (d) => `
+        <div class="history-item" data-id="${d.id}">
+          <strong>${d.errorCode}</strong> — ${d.carBrand} ${d.carYear}
+          <small style="float:right;">${d.date}</small>
+        </div>`
         )
         .join("");
   
       historyDiv.innerHTML = `
         <h4>🕓 Senaste sökningar</h4>
-        <ul id="historyList">${items}</ul>
-        <button id="clearHistory" class="history-clear">🧹 Rensa historik</button>`;
+        ${list}
+        <button id="clearHistory" class="btn-link">Rensa historik</button>
+      `;
   
-      document.querySelectorAll("#historyList li").forEach((li) => {
-        li.addEventListener("click", () => {
-          const idx = li.dataset.index;
-          const h = JSON.parse(localStorage.getItem("obdHistory"))[idx];
-          if (h) {
-            document.getElementById("errorCode").value = h.errorCode;
-            document.getElementById("carBrand").value = h.carBrand;
-            document.getElementById("carYear").value = h.carYear;
-            document.getElementById("engineCode").value = h.engineCode || "";
-            form.dispatchEvent(new Event("submit", { cancelable: true }));
-          }
+      document.querySelectorAll(".history-item").forEach((item) => {
+        item.addEventListener("click", () => {
+          const id = item.dataset.id;
+          currentDiagnosisId = id;
+  
+          const diag = diagnoses.find((d) => d.id === id);
+          if (!diag) return;
+  
+          displayDiagnosis(diag);
+          loadChatThread();
         });
       });
   
-      const clearBtn = document.getElementById("clearHistory");
-      if (clearBtn)
-        clearBtn.addEventListener("click", () => {
-          localStorage.removeItem("obdHistory");
-          updateHistoryDisplay();
-        });
+      document.getElementById("clearHistory").addEventListener("click", () => {
+        if (!confirm("Rensa all historik?")) return;
+        localStorage.removeItem("diagnoses");
+        localStorage.removeItem("chatThreads");
+        diagnoses = [];
+        chatThreads = {};
+        historyDiv.innerHTML = "";
+        chatBox.innerHTML = "";
+        resultDiv.innerHTML = "";
+      });
     }
+    updateHistoryDisplay();
   
-    // -----------------------------------------------------
-    // 💬 CHAT
-    // -----------------------------------------------------
-    function loadChatHistory() {
+    /* -----------------------------------------
+       CHATT – Fungerar nu med kontext från diagnosen
+    ----------------------------------------- */
+    function loadChatThread() {
       chatBox.innerHTML = "";
-      chatHistory.forEach((m) => appendChatMessage(m.role, m.content));
-    }
   
-    function updateChatContext() {
-      const ctxEl = document.getElementById("chatContext");
-      if (!ctxEl || !latestDiagnosis) return;
-      ctxEl.innerHTML = `
-        <div class="context-box">
-          <strong>Aktiv diagnos:</strong><br>
-          ${latestDiagnosis.carBrand} ${latestDiagnosis.carYear} — ${
-        latestDiagnosis.errorCode
-      }<br>
-          ${latestDiagnosis.engineCode || "Ingen motorkod angiven"}
-        </div>`;
+      if (!currentDiagnosisId) return;
+  
+      currentChat = chatThreads[currentDiagnosisId] || [];
+  
+      currentChat.forEach((m) => appendChatMessage(m.role, m.content));
     }
   
     chatForm.addEventListener("submit", async (e) => {
       e.preventDefault();
+  
       const text = chatInput.value.trim();
-      if (!text) return;
+      if (!text || !currentDiagnosisId) return;
   
       appendChatMessage("user", text);
-      chatHistory.push({ role: "user", content: text });
-      chatInput.value = "";
   
-      const loaderEl = appendChatMessage("assistant", "", true);
+      currentChat.push({ role: "user", content: text });
+      chatThreads[currentDiagnosisId] = currentChat;
+      localStorage.setItem("chatThreads", JSON.stringify(chatThreads));
   
-      const enrichedMessages = [...chatHistory];
-      if (latestDiagnosis) {
-        enrichedMessages.unshift({
+      const diag = diagnoses.find((d) => d.id === currentDiagnosisId);
+  
+      // SKICKA KONTEKST + CHATTHISTORIK
+      const enrichedMessages = [
+        {
           role: "system",
-          content: `Tidigare diagnosinformation:\nFelkod: ${latestDiagnosis.errorCode}\nBilmärke: ${latestDiagnosis.carBrand}\nÅrsmodell: ${latestDiagnosis.carYear}\nMotorkod: ${latestDiagnosis.engineCode || "Okänd"}\nAI-svar: ${latestDiagnosis.result}`,
-        });
-      }
+          content: `
+          Du är en professionell bilmekaniker med expertis inom OBD2-diagnostik.
+  
+          Här är detaljerna om fordonet och diagnosen:
+  
+          Felkod(er): ${diag.errorCode}
+          Bilmärke: ${diag.carBrand}
+          Årsmodell: ${diag.carYear}
+          Motorkod: ${diag.engineCode || "Okänd"}
+  
+          Ursprungligt AI-diagnossvar:
+          ${diag.result}
+  
+          Använd detta som kontext när du svarar. Var teknisk, tydlig och konkret.
+          `,
+        },
+        ...currentChat,
+      ];
   
       try {
         const response = await fetch("http://localhost:3000/api/chat", {
@@ -233,66 +272,86 @@ document.addEventListener("DOMContentLoaded", () => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ messages: enrichedMessages }),
         });
+  
         const data = await response.json();
-        loaderEl.remove();
   
         if (data.reply) {
           appendChatMessage("assistant", data.reply);
-          chatHistory.push({ role: "assistant", content: data.reply });
-          localStorage.setItem("chatHistory", JSON.stringify(chatHistory));
-        } else {
-          appendChatMessage("assistant", "❌ Inget svar kunde hämtas.");
+  
+          currentChat.push({ role: "assistant", content: data.reply });
+          chatThreads[currentDiagnosisId] = currentChat;
+          localStorage.setItem("chatThreads", JSON.stringify(chatThreads));
         }
       } catch (err) {
-        loaderEl.remove();
         appendChatMessage("assistant", "⚠️ Fel: " + err.message);
+        console.error(err);
       }
+  
+      chatInput.value = "";
     });
   
-    function appendChatMessage(role, text, isTyping = false) {
+    function appendChatMessage(role, text) {
       const el = document.createElement("div");
-      el.className = `message ${role === "user" ? "user" : "ai"}`;
-      if (isTyping) {
-        el.innerHTML = `<div class="ai-loader"><span></span><span></span><span></span></div><p>AI analyserar...</p>`;
-      } else {
-        el.innerHTML = text.replace(/\n/g, "<br>");
-      }
+      el.className = `message ${role}`;
+      el.innerHTML = text.replace(/\n/g, "<br>");
       chatBox.appendChild(el);
       chatBox.scrollTop = chatBox.scrollHeight;
-      return el;
     }
   
-    clearChatBtn.addEventListener("click", () => {
-      if (!confirm("Rensa chatt?")) return;
-      chatHistory = [];
-      chatBox.innerHTML = "";
-      localStorage.removeItem("chatHistory");
+    /* -----------------------------------------
+       EXPORT PDF – Chat
+    ----------------------------------------- */
+    exportChatBtn.addEventListener("click", () => {
+      if (!currentChat.length) return alert("Ingen chatt att exportera.");
+  
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF("p", "pt", "a4");
+  
+      doc.setFontSize(14);
+      doc.text("Lovgrens Chat-logg", 40, 60);
+  
+      let y = 90;
+      currentChat.forEach((m) => {
+        const prefix = m.role === "user" ? "Användare:" : "AI:";
+        const lines = doc.splitTextToSize(prefix + " " + m.content, 500);
+        doc.text(lines, 40, y);
+        y += lines.length * 14 + 10;
+  
+        if (y > 750) {
+          doc.addPage();
+          y = 40;
+        }
+      });
+  
+      doc.save("chatlog.pdf");
     });
   
-    // -----------------------------------------------------
-    // 🔔 NOTIFIERING
-    // -----------------------------------------------------
+    /* -----------------------------------------
+       NOTISER
+    ----------------------------------------- */
     function showNotification(text) {
       const note = document.createElement("div");
       note.textContent = text;
-      note.style.position = "fixed";
-      note.style.bottom = "20px";
-      note.style.right = "20px";
-      note.style.background = "#198754";
-      note.style.color = "#fff";
-      note.style.padding = "10px 16px";
-      note.style.borderRadius = "8px";
-      note.style.boxShadow = "0 4px 10px rgba(0,0,0,0.2)";
-      note.style.zIndex = "9999";
+  
+      Object.assign(note.style, {
+        position: "fixed",
+        bottom: "20px",
+        right: "20px",
+        background: "#198754",
+        color: "white",
+        padding: "10px 16px",
+        borderRadius: "8px",
+        fontWeight: "600",
+        boxShadow: "0 6px 14px rgba(0,0,0,.3)",
+        opacity: "0",
+        transition: "opacity .2s",
+        zIndex: 9999,
+      });
+  
       document.body.appendChild(note);
+      setTimeout(() => (note.style.opacity = "1"), 10);
       setTimeout(() => note.remove(), 2500);
     }
   
-    // -----------------------------------------------------
-    // 💾 SPARA VID STÄNGNING
-    // -----------------------------------------------------
-    window.addEventListener("beforeunload", () => {
-      localStorage.setItem("chatHistory", JSON.stringify(chatHistory));
-    });
   });
   
