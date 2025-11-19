@@ -1,357 +1,241 @@
-/* =========================================================
-   Lovgrens Diagnostik – Komplett app.js (med chat-kontext)
-   ========================================================= */
-   document.addEventListener("DOMContentLoaded", () => {
-    console.log("🚀 App startar...");
-  
-    /* -----------------------------------------
-       ELEMENTREFERENSER
-    ----------------------------------------- */
-    const form = document.getElementById("codeForm");
-    const resultDiv = document.getElementById("result");
-    const loadingDiv = document.getElementById("loading");
-    const historyDiv = document.getElementById("history");
-  
-    const exportPDFBtn = document.getElementById("exportPDF");
-  
-    // Chat
-    const chatForm = document.getElementById("chatForm");
-    const chatInput = document.getElementById("chatInput");
-    const chatBox = document.getElementById("chatBox");
-    const clearChatBtn = document.getElementById("clearChat");
-    const exportChatBtn = document.getElementById("exportChat");
-  
-    // Dark mode
-    const themeToggle = document.getElementById("themeToggle");
-  
-    /* -----------------------------------------
-       LOKAL DATA
-    ----------------------------------------- */
-    let diagnoses = JSON.parse(localStorage.getItem("diagnoses")) || [];
-    let currentDiagnosisId = null;
-  
-    let chatThreads = JSON.parse(localStorage.getItem("chatThreads")) || {};
-    let currentChat = [];
-  
-    /* -----------------------------------------
-       DARK MODE
-    ----------------------------------------- */
-    function loadTheme() {
-      const saved = localStorage.getItem("theme") || "light";
-      document.body.classList.toggle("dark", saved === "dark");
-      themeToggle.textContent = saved === "dark" ? "☀️" : "🌙";
-    }
-    loadTheme();
-  
-    themeToggle.addEventListener("click", () => {
-      const newTheme = document.body.classList.contains("dark") ? "light" : "dark";
-      document.body.classList.toggle("dark");
-      themeToggle.textContent = newTheme === "dark" ? "☀️" : "🌙";
-      localStorage.setItem("theme", newTheme);
-    });
-  
-    /* -----------------------------------------
-       DIAGNOS – FELKODSÖKNING
-    ----------------------------------------- */
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      console.log("🔎 Diagnos startar...");
-  
-      const errorCode = document.getElementById("errorCode").value.trim();
-      const carBrand = document.getElementById("carBrand").value.trim();
-      const carYear = document.getElementById("carYear").value.trim();
-      const engineCode = document.getElementById("engineCode").value.trim();
-  
-      resultDiv.innerHTML = "";
-      loadingDiv.style.display = "block";
-  
-      if (!errorCode || !carBrand || !carYear) {
-        loadingDiv.style.display = "none";
-        resultDiv.innerHTML = `<p style="color:#d9534f;">⚠️ Fyll i felkod, märke och årsmodell.</p>`;
-        return;
-      }
-  
-      try {
-        const response = await fetch("http://localhost:3000/api/obb/diagnose", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ errorCode, carBrand, carYear, engineCode }),
-        });
-  
-        if (!response.ok) throw new Error(`Serverfel: ${response.status}`);
-  
-        const data = await response.json();
-        loadingDiv.style.display = "none";
-  
-        if (data.error) {
-          resultDiv.innerHTML = `<p style="color:#d9534f;">${data.error}</p>`;
+// ========================================
+// AutonomeX - app.js (MATCHAR DIN HTML)
+// ========================================
+
+document.addEventListener("DOMContentLoaded", async () => {
+  console.log("🚀 AutonomeX app startar…");
+
+  // ----------------------------------------------------
+  // Supabase-klient
+  // ----------------------------------------------------
+  const SUPABASE_URL = "https://ewyyoyqgpfgmeafmiefv.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV3eXlveXFncGZnbWVhZm1pZWZ2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMwNDYxMzAsImV4cCI6MjA3ODYyMjEzMH0.Uk6wJbhGU11wHAk1O8wx5Tllk4s-q5oSZJCiPUI9nWk";
+
+  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const apiBase = "http://localhost:3000";
+
+  // ----------------------------------------------------
+  // DOM-referenser – DINA KORREKTA ID:N
+  // ----------------------------------------------------
+  const form = document.getElementById("codeForm");
+  const resultBox = document.getElementById("result");
+  const latestBtn = document.getElementById("latestBtn");
+  const latestBox = document.getElementById("latestBox");
+  const historyBox = document.getElementById("history");
+
+  const chatForm = document.getElementById("chatForm");
+  const chatInput = document.getElementById("chatInput");
+  const chatBox = document.getElementById("chatBox");
+
+  let currentDiagnosis = null;
+
+  // ----------------------------------------------------
+  // Utility – se till att error_codes ALLTID är array
+  // ----------------------------------------------------
+  function toArray(val) {
+      if (!val) return [];
+      if (Array.isArray(val)) return val;
+      if (typeof val === "string") return [val];
+      if (typeof val === "object") return Object.values(val);
+      return [];
+  }
+
+  // ----------------------------------------------------
+  // Visa diagnos i UI
+  // ----------------------------------------------------
+  function displayDiagnosis(diag) {
+      currentDiagnosis = diag;
+
+      const codes = toArray(diag.error_codes).join(", ");
+
+      resultBox.innerHTML = `
+          <div class="diag-box">
+              <h3>${codes}</h3>
+              <p><strong>Märke:</strong> ${diag.car_brand}</p>
+              <p><strong>Årsmodell:</strong> ${diag.car_year}</p>
+              <p><strong>Motorkod:</strong> ${diag.engine_code || "Okänd"}</p>
+              <hr>
+              <pre>${diag.result}</pre>
+          </div>
+      `;
+
+      saveLocal(diag);
+      updateHistoryUI();
+  }
+
+  // ----------------------------------------------------
+  // Lokal lagring
+  // ----------------------------------------------------
+  function saveLocal(diag) {
+      localStorage.setItem("latest_diagnosis", JSON.stringify(diag));
+
+      let history = JSON.parse(localStorage.getItem("history") || "[]");
+      history.unshift(diag);
+      history = history.slice(0, 10);
+      localStorage.setItem("history", JSON.stringify(history));
+  }
+
+  function loadLatestLocal() {
+      const data = localStorage.getItem("latest_diagnosis");
+      if (!data) {
+          alert("Ingen sparad diagnos.");
           return;
-        }
-  
-        // Skapa diagnosobjekt
-        const diag = {
-          id: Date.now().toString(),
-          errorCode,
-          carBrand,
-          carYear,
-          engineCode,
-          result: data.result,
-          date: new Date().toLocaleString("sv-SE"),
-        };
-  
-        diagnoses.unshift(diag);
-        if (diagnoses.length > 30) diagnoses.pop();
-        localStorage.setItem("diagnoses", JSON.stringify(diagnoses));
-  
-        currentDiagnosisId = diag.id;
-  
-        // Skapa ny chattråd för diagnosen
-        chatThreads[currentDiagnosisId] = [];
-        localStorage.setItem("chatThreads", JSON.stringify(chatThreads));
-        loadChatThread();
-  
-        displayDiagnosis(diag);
-        updateHistoryDisplay();
-        showNotification("✅ Diagnos klar!");
-      } catch (err) {
-        loadingDiv.style.display = "none";
-        resultDiv.innerHTML = `<p style="color:#d9534f;">Fel: ${err.message}</p>`;
-        console.error("Diagnos error:", err);
       }
-    });
-  
-    /* -----------------------------------------
-       VISA DIAGNOS
-    ----------------------------------------- */
-    function displayDiagnosis(diag) {
-      let formatted = diag.result
-        .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
-        .replace(/\n/g, "<br>");
-  
-      const actionsRegex =
-        /(Föreslagna åtgärder:|Föreslagna åtgärder<\/strong>:?)([\s\S]*)/i;
-  
-      const match = formatted.match(actionsRegex);
-      if (match) {
-        const header = match[1];
-        const actions = match[2].trim();
-  
-        formatted = formatted.replace(
-          actionsRegex,
-          `${header}
-           <button class="toggle-btn">👀 Visa åtgärder ▼</button>
-           <div class="steps">${actions}</div>`
-        );
+      displayDiagnosis(JSON.parse(data));
+  }
+
+  function updateHistoryUI() {
+      let history = JSON.parse(localStorage.getItem("history") || "[]");
+
+      if (!history.length) {
+          historyBox.innerHTML = "<p>Ingen historik.</p>";
+          return;
       }
-  
-      resultDiv.innerHTML = `
-        <h3>Felkod: ${diag.errorCode}</h3>
-        <p><strong>${diag.carBrand} ${diag.carYear}</strong>
-           ${diag.engineCode ? `– Motorkod: ${diag.engineCode}` : ""}</p>
-        <p><small>${diag.date}</small></p>
-        <div class="answer">${formatted}</div>
-      `;
-  
-      const toggleBtn = resultDiv.querySelector(".toggle-btn");
-      const steps = resultDiv.querySelector(".steps");
-  
-      if (toggleBtn) {
-        toggleBtn.addEventListener("click", () => {
-          const visible = steps.classList.toggle("show");
-          toggleBtn.textContent = visible
-            ? "🙈 Dölj åtgärder ▲"
-            : "👀 Visa åtgärder ▼";
-        });
-      }
-    }
-  
-    /* -----------------------------------------
-       HISTORIK – Klicka för att visa gammal diagnos
-    ----------------------------------------- */
-    function updateHistoryDisplay() {
-      if (!diagnoses.length) {
-        historyDiv.innerHTML = "";
-        return;
-      }
-  
-      const list = diagnoses
-        .map(
-          (d) => `
-        <div class="history-item" data-id="${d.id}">
-          <strong>${d.errorCode}</strong> — ${d.carBrand} ${d.carYear}
-          <small style="float:right;">${d.date}</small>
-        </div>`
-        )
-        .join("");
-  
-      historyDiv.innerHTML = `
-        <h4>🕓 Senaste sökningar</h4>
-        ${list}
-        <button id="clearHistory" class="btn-link">Rensa historik</button>
-      `;
-  
-      document.querySelectorAll(".history-item").forEach((item) => {
-        item.addEventListener("click", () => {
-          const id = item.dataset.id;
-          currentDiagnosisId = id;
-  
-          const diag = diagnoses.find((d) => d.id === id);
-          if (!diag) return;
-  
-          displayDiagnosis(diag);
-          loadChatThread();
-        });
+
+      historyBox.innerHTML = history
+          .map(
+              (d, i) => `
+          <div class="history-item">
+              <button class="btn-link" data-index="${i}">
+                  ${toArray(d.error_codes).join(", ")} — ${d.car_brand} ${d.car_year}
+              </button>
+          </div>
+      `
+          )
+          .join("");
+
+      document.querySelectorAll(".history-item button").forEach((btn) => {
+          btn.addEventListener("click", () => {
+              const i = btn.dataset.index;
+              const history = JSON.parse(localStorage.getItem("history"));
+              displayDiagnosis(history[i]);
+          });
       });
-  
-      document.getElementById("clearHistory").addEventListener("click", () => {
-        if (!confirm("Rensa all historik?")) return;
-        localStorage.removeItem("diagnoses");
-        localStorage.removeItem("chatThreads");
-        diagnoses = [];
-        chatThreads = {};
-        historyDiv.innerHTML = "";
-        chatBox.innerHTML = "";
-        resultDiv.innerHTML = "";
+  }
+
+  // ----------------------------------------------------
+  // Ladda senaste
+  // ----------------------------------------------------
+  if (latestBtn) {
+      latestBtn.addEventListener("click", loadLatestLocal);
+  }
+
+  // ----------------------------------------------------
+  // Skicka felkod
+  // ----------------------------------------------------
+  if (form) {
+      form.addEventListener("submit", async (e) => {
+          e.preventDefault();
+
+          const errorCode = document.getElementById("errorCode").value;
+          const carBrand = document.getElementById("carBrand").value;
+          const carYear = document.getElementById("carYear").value;
+          const engineCode = document.getElementById("engineCode").value;
+
+          const session = (await supabase.auth.getSession()).data.session;
+          if (!session) return alert("Du måste vara inloggad.");
+
+          try {
+              const res = await fetch(`${apiBase}/api/obd/diagnose`, {
+                  method: "POST",
+                  headers: {
+                      "Content-Type": "application/json",
+                      Authorization: `Bearer ${session.access_token}`,
+                  },
+                  body: JSON.stringify({
+                      errorCode,
+                      carBrand,
+                      carYear,
+                      engineCode,
+                  }),
+              });
+
+              const data = await res.json();
+
+              if (!res.ok) {
+                  console.error("Diagnos error:", data);
+                  alert(data.error || "Fel uppstod");
+                  return;
+              }
+
+              displayDiagnosis(data.diagnosis);
+          } catch (err) {
+              console.error("Diagnos exception:", err);
+              alert("Kunde inte kontakta servern.");
+          }
       });
-    }
-    updateHistoryDisplay();
-  
-    /* -----------------------------------------
-       CHATT – Fungerar nu med kontext från diagnosen
-    ----------------------------------------- */
-    function loadChatThread() {
-      chatBox.innerHTML = "";
-  
-      if (!currentDiagnosisId) return;
-  
-      currentChat = chatThreads[currentDiagnosisId] || [];
-  
-      currentChat.forEach((m) => appendChatMessage(m.role, m.content));
-    }
-  
-    chatForm.addEventListener("submit", async (e) => {
-      e.preventDefault();
-  
-      const text = chatInput.value.trim();
-      if (!text || !currentDiagnosisId) return;
-  
-      appendChatMessage("user", text);
-  
-      currentChat.push({ role: "user", content: text });
-      chatThreads[currentDiagnosisId] = currentChat;
-      localStorage.setItem("chatThreads", JSON.stringify(chatThreads));
-  
-      const diag = diagnoses.find((d) => d.id === currentDiagnosisId);
-  
-      // SKICKA KONTEKST + CHATTHISTORIK
-      const enrichedMessages = [
-        {
-          role: "system",
-          content: `
-          Du är en professionell bilmekaniker med expertis inom OBD2-diagnostik.
-  
-          Här är detaljerna om fordonet och diagnosen:
-  
-          Felkod(er): ${diag.errorCode}
-          Bilmärke: ${diag.carBrand}
-          Årsmodell: ${diag.carYear}
-          Motorkod: ${diag.engineCode || "Okänd"}
-  
-          Ursprungligt AI-diagnossvar:
-          ${diag.result}
-  
-          Använd detta som kontext när du svarar. Var teknisk, tydlig och konkret.
-          `,
-        },
-        ...currentChat,
-      ];
-  
-      try {
-        const response = await fetch("http://localhost:3000/api/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: enrichedMessages }),
-        });
-  
-        const data = await response.json();
-  
-        if (data.reply) {
-          appendChatMessage("assistant", data.reply);
-  
-          currentChat.push({ role: "assistant", content: data.reply });
-          chatThreads[currentDiagnosisId] = currentChat;
-          localStorage.setItem("chatThreads", JSON.stringify(chatThreads));
-        }
-      } catch (err) {
-        appendChatMessage("assistant", "⚠️ Fel: " + err.message);
-        console.error(err);
-      }
-  
-      chatInput.value = "";
-    });
-  
-    function appendChatMessage(role, text) {
-      const el = document.createElement("div");
-      el.className = `message ${role}`;
-      el.innerHTML = text.replace(/\n/g, "<br>");
-      chatBox.appendChild(el);
+  }
+
+  // ----------------------------------------------------
+  // CHAT
+  // ----------------------------------------------------
+  function appendMessage(role, text) {
+      const div = document.createElement("div");
+      div.className = `msg ${role}`;
+      div.textContent = text;
+      chatBox.appendChild(div);
       chatBox.scrollTop = chatBox.scrollHeight;
-    }
-  
-    /* -----------------------------------------
-       EXPORT PDF – Chat
-    ----------------------------------------- */
-    exportChatBtn.addEventListener("click", () => {
-      if (!currentChat.length) return alert("Ingen chatt att exportera.");
-  
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF("p", "pt", "a4");
-  
-      doc.setFontSize(14);
-      doc.text("Lovgrens Chat-logg", 40, 60);
-  
-      let y = 90;
-      currentChat.forEach((m) => {
-        const prefix = m.role === "user" ? "Användare:" : "AI:";
-        const lines = doc.splitTextToSize(prefix + " " + m.content, 500);
-        doc.text(lines, 40, y);
-        y += lines.length * 14 + 10;
-  
-        if (y > 750) {
-          doc.addPage();
-          y = 40;
-        }
+  }
+
+  if (chatForm) {
+      chatForm.addEventListener("submit", async (e) => {
+          e.preventDefault();
+
+          const text = chatInput.value.trim();
+          if (!text) return;
+          if (!currentDiagnosis) return alert("Gör en diagnos först.");
+
+          const session = (await supabase.auth.getSession()).data.session;
+          if (!session) return alert("Du måste vara inloggad.");
+
+          appendMessage("user", text);
+          chatInput.value = "";
+
+          const context = `
+Felkoder: ${toArray(currentDiagnosis.error_codes).join(", ")}
+Märke: ${currentDiagnosis.car_brand}
+Årsmodell: ${currentDiagnosis.car_year}
+Motorkod: ${currentDiagnosis.engine_code || "Okänd"}
+
+Originaldiagnos:
+${currentDiagnosis.result}
+
+Använd detta som kontext.`;
+
+          const messages = [
+              { role: "system", content: "Du är en bilmekaniker-Expert AI." },
+              { role: "user", content: context },
+              { role: "user", content: text },
+          ];
+
+          try {
+              const res = await fetch(`${apiBase}/api/chat`, {
+                  method: "POST",
+                  headers: {
+                      "Content-Type": "application/json",
+                      Authorization: `Bearer ${session.access_token}`,
+                  },
+                  body: JSON.stringify({
+                      messages,
+                      diagnosisId: currentDiagnosis.id,
+                  }),
+              });
+
+              const data = await res.json();
+
+              if (!res.ok) {
+                  console.error("Chat error:", data);
+                  alert(data.error || "Chat-fel");
+                  return;
+              }
+
+              appendMessage("assistant", data.reply);
+          } catch (err) {
+              console.error("Chat exception:", err);
+          }
       });
-  
-      doc.save("chatlog.pdf");
-    });
-  
-    /* -----------------------------------------
-       NOTISER
-    ----------------------------------------- */
-    function showNotification(text) {
-      const note = document.createElement("div");
-      note.textContent = text;
-  
-      Object.assign(note.style, {
-        position: "fixed",
-        bottom: "20px",
-        right: "20px",
-        background: "#198754",
-        color: "white",
-        padding: "10px 16px",
-        borderRadius: "8px",
-        fontWeight: "600",
-        boxShadow: "0 6px 14px rgba(0,0,0,.3)",
-        opacity: "0",
-        transition: "opacity .2s",
-        zIndex: 9999,
-      });
-  
-      document.body.appendChild(note);
-      setTimeout(() => (note.style.opacity = "1"), 10);
-      setTimeout(() => note.remove(), 2500);
-    }
-  
-  });
-  
+  }
+
+  // Ladda historik vid start
+  updateHistoryUI();
+});

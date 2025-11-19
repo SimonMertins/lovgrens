@@ -2,167 +2,231 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import fs from "fs";
-import path from "path";
 import OpenAI from "openai";
+import { createClient } from "@supabase/supabase-js";
 
 dotenv.config();
 
-const app = express();
 const PORT = process.env.PORT || 3000;
+const OPENAI_KEY = process.env.OPENAI_API_KEY;
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-app.use(cors());
-app.use(express.json());
-
-// --- Kontrollera API-nyckel ---
-if (!process.env.OPENAI_API_KEY) {
-  console.error("❌ Ingen OpenAI API-nyckel i .env!");
+if (!OPENAI_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  console.error("Missing env vars. Set OPENAI_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY");
   process.exit(1);
 }
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openai = new OpenAI({ apiKey: OPENAI_KEY });
 
-// --- Skapa loggmapp ---
-const logDir = path.resolve("logs");
-if (!fs.existsSync(logDir)) fs.mkdirSync(logDir);
+// Server-side Supabase client (service role)
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+  auth: { persistSession: false },
+});
 
-// --------------------------------------------------------------------
-// 🧠 DIAGNOS-ENDPOINT
-// --------------------------------------------------------------------
-app.post("/api/obd/diagnose", async (req, res) => {
-  const { errorCode, carBrand, carYear, engineCode } = req.body;
+const app = express();
+app.use(cors());
+app.use(express.json());
 
-  if (!errorCode || !carBrand || !carYear) {
-    return res
-      .status(400)
-      .json({ error: "Fyll i felkod, bilmärke och årsmodell." });
-  }
-
-  const prompt = `
-Du är en mycket erfaren bilmekaniker och diagnostechniker med expertkunskap inom OBD2-system,
-motorelektronik, sensorer och bränslesystem.
-
-Analysera följande uppgifter och ge ett tekniskt korrekt, tydligt och professionellt svar.
-
-Felkoder: ${errorCode}
-Bilmärke: ${carBrand}
-Årsmodell: ${carYear}
-${engineCode ? `Motorkod: ${engineCode}` : ""}
-
-Om flera felkoder anges, analysera **varje kod separat** och beskriv deras individuella betydelse.
-Identifiera därefter **möjliga samband** mellan dem och ge en gemensam teknisk bedömning.
-
-Svara alltid i detta format:
-
-1. **Förklaring per kod:** Förklara varje kods betydelse på ett tydligt men tekniskt sätt.
-2. **Troliga orsaker:** Lista de vanligaste orsakerna för dessa felkoder på ${carBrand} ${carYear}.
-3. **Rekommenderade åtgärder:** Ge en konkret steg-för-steg-plan för felsökning och åtgärd.
-4. **Sammanfattning:** Kort slutsats om vad som mest sannolikt orsakar felen.
-
-Var alltid konkret och pedagogisk. Undvik generella eller alltför breda förklaringar.
-`;
-
+// Helper: get user from bearer token sent by client
+async function getUserFromAuthHeader(req) {
   try {
-    console.log(`⚙️ Kör GPT-4o för diagnos (${carBrand} ${carYear}) ...`);
+    const authHeader = req.headers.authorization || "";
+    const token = authHeader.replace("Bearer ", "").trim();
+    if (!token) return { error: "No token provided", user: null };
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: 900,
-      temperature: 0.6,
-    });
+    // supabase.auth.getUser requires the token
+    const { data, error } = await supabase.auth.getUser(token);
+    if (error) {
+      return { error: error.message || "Could not fetch user", user: null };
+    }
+    return { user: data.user, error: null };
+  } catch (err) {
+    return { error: err.message || String(err), user: null };
+  }
+}
 
-    const result = completion.choices?.[0]?.message?.content?.trim();
-    if (!result) {
-      console.error("⚠️ Tomt svar från modellen.");
-      return res.status(500).json({ error: "Inget svar från AI-modellen." });
+// Simple parser for multiple codes
+function parseCodes(input) {
+  if (!input) return [];
+  if (Array.isArray(input)) return input.map((s) => String(s).trim()).filter(Boolean);
+  return String(input).split(/[,\n;]+/).map((s) => s.trim()).filter(Boolean);
+}
+
+// Basic OpenAI call with fallback list and logging
+async function callOpenAI(promptMessages, models = ["gpt-4o", "gpt-4o-mini"]) {
+  for (const model of models) {
+    try {
+      console.log("⚙️ Försöker med modell:", model);
+      const completion = await openai.chat.completions.create({
+        model,
+        messages: promptMessages,
+      });
+
+      let text = "";
+      if (completion?.choices?.[0]?.message?.content) text = completion.choices[0].message.content;
+      else if (completion?.output_text) text = completion.output_text;
+
+      const usage = completion?.usage ?? null;
+      return { success: true, model, text, usage, raw: completion };
+    } catch (err) {
+      console.warn("Model failed:", model, err?.message || err);
+      continue;
+    }
+  }
+  return { success: false, error: "No model available" };
+}
+
+// ---------------- Endpoint: POST /api/obd/diagnose ----------------
+app.post("/api/obd/diagnose", async (req, res) => {
+  try {
+    // Authenticate request
+    const { user, error: userErr } = await getUserFromAuthHeader(req);
+    if (userErr || !user) {
+      console.warn("Auth failed:", userErr);
+      return res.status(401).json({ error: "Ej inloggad eller ogiltig token." });
     }
 
-    // Tokenloggning
-    const usage = completion.usage;
-    const tokens = usage?.total_tokens || 0;
-    const estimatedCost = ((tokens / 1000) * 0.1).toFixed(3);
+    const { errorCode, carBrand, carYear, engineCode } = req.body;
+    if (!errorCode || !carBrand || !carYear) {
+      return res.status(400).json({ error: "Fält errorCode, carBrand, carYear krävs." });
+    }
 
-    console.log("──────────────────────────────────────────────");
-    console.log(`🤖 Modell: gpt-4o`);
-    console.log(`🔎 Förfrågan: ${errorCode} (${carBrand} ${carYear})`);
-    console.log(`📊 Tokens: ${tokens}  💰 Intern kostnad: ${estimatedCost} SEK`);
-    console.log("──────────────────────────────────────────────");
+    const codes = parseCodes(errorCode);
 
-    const logEntry = `[${new Date().toISOString()}] ${carBrand} ${carYear} ${errorCode} - ${tokens} tokens ≈ ${estimatedCost} SEK\n`;
-    fs.appendFileSync(path.join(logDir, "usage.log"), logEntry);
+    const prompt = [
+      {
+        role: "system",
+        content:
+          "Du är en erfaren bilmekaniker med expertkunskap om OBD2-felkoder. Ge korta, konkreta och handlingsbara svar anpassade för verkstad.",
+      },
+      {
+        role: "user",
+        content: `Analysera följande:
+Felkod(er): ${codes.join(", ")}
+Bilmärke: ${carBrand}
+Årsmodell: ${carYear}
+Motorkod: ${engineCode || "Okänd"}
 
-    res.json({ result });
-  } catch (error) {
-    console.error("❌ Fel vid diagnos:", error);
-    res
-      .status(500)
-      .json({ error: "Ett fel uppstod vid AI-anropet. Försök igen senare." });
+Svara i detta format:
+1. Förklaring:
+2. Vanliga orsaker:
+3. Föreslagna åtgärder:
+4. Obs/Notera:`,
+      },
+    ];
+
+    const aiResp = await callOpenAI(prompt, ["gpt-4o", "gpt-4o-mini"]);
+    if (!aiResp.success) {
+      console.error("AI error:", aiResp.error);
+      return res.status(500).json({ error: "AI-svar kunde inte genereras." });
+    }
+
+    const aiText = aiResp.text || "(Inget textresultat)";
+    const modelUsed = aiResp.model || "unknown";
+    const usage = aiResp.usage || null;
+
+    // Insert diagnosis row
+    const insertObj = {
+      user_id: user.id,
+      error_codes: codes,
+      car_brand: carBrand,
+      car_year: Number(carYear),
+      engine_code: engineCode || null,
+      result: aiText,
+      model_used: modelUsed,
+      created_at: new Date().toISOString(),
+    };
+
+    const { data: inserted, error: insertErr } = await supabase
+      .from("diagnoses")
+      .insert(insertObj)
+      .select()
+      .single();
+
+    if (insertErr) {
+      console.error("Supabase insert error:", insertErr);
+      // Return DB error details to frontend (for debugging)
+      return res.status(500).json({
+        error: "Kunde inte spara diagnos i databasen.",
+        db_error: insertErr,
+      });
+    }
+
+    const diagnosisId = inserted.id;
+
+    // Save metadata (no need to block response)
+    try {
+      await supabase.from("diagnosis_metadata").insert({
+        diagnosis_id: diagnosisId,
+        user_id: user.id,
+        model: modelUsed,
+        tokens_prompt: usage?.prompt_tokens ?? null,
+        tokens_completion: usage?.completion_tokens ?? usage?.total_tokens ?? null,
+        response_time_ms: null,
+        device_info: req.headers["user-agent"] || null,
+        created_at: new Date().toISOString(),
+      });
+    } catch (metaErr) {
+      console.warn("Metadata insert failed:", metaErr);
+    }
+
+    // Return the diagnosis row + ai text
+    return res.json({
+      diagnosis: inserted,
+      result: aiText,
+      model_used: modelUsed,
+      usage,
+    });
+  } catch (err) {
+    console.error("Unexpected server error (diagnose):", err);
+    return res.status(500).json({ error: "Internt serverfel", detail: err.message || String(err) });
   }
 });
 
-// --------------------------------------------------------------------
-// 💬 CHAT-ENDPOINT (för PRO-användare)
-// --------------------------------------------------------------------
+// ---------------- Endpoint: POST /api/chat ----------------
 app.post("/api/chat", async (req, res) => {
-  const { messages } = req.body;
-
-  if (!messages || !Array.isArray(messages)) {
-    return res
-      .status(400)
-      .json({ error: "Ogiltig chat-förfrågan. Saknar 'messages'-array." });
-  }
-
   try {
-    console.log(`💬 Startar GPT-4o-chat med ${messages.length} meddelanden ...`);
+    const { user, error: userErr } = await getUserFromAuthHeader(req);
+    if (userErr || !user) return res.status(401).json({ error: "Ej inloggad." });
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: [
-        {
-          role: "system",
-          content:
-            "Du är en erfaren bilmekaniker som hjälper användaren med avancerad felsökning och rådgivning. Skriv kortfattat, tekniskt och konkret.",
-        },
-        ...messages,
-      ],
-      max_tokens: 1000,
-      temperature: 0.7,
+    const { messages, diagnosisId } = req.body;
+    if (!messages || !Array.isArray(messages)) return res.status(400).json({ error: "messages array krävs" });
+
+    // send to AI
+    const aiResp = await callOpenAI(messages, ["gpt-4o", "gpt-4o-mini"]);
+    if (!aiResp.success) return res.status(500).json({ error: "AI-svar saknas." });
+
+    const reply = aiResp.text || "";
+
+    // persist all messages + assistant reply
+    const inserts = messages.map((m) => ({
+      diagnosis_id: diagnosisId || null,
+      user_id: user.id,
+      role: m.role || "user",
+      content: m.content || "",
+      created_at: new Date().toISOString(),
+    }));
+    inserts.push({
+      diagnosis_id: diagnosisId || null,
+      user_id: user.id,
+      role: "assistant",
+      content: reply,
+      created_at: new Date().toISOString(),
     });
 
-    const reply = completion.choices?.[0]?.message?.content?.trim() || "";
+    const { error: chatErr } = await supabase.from("chats").insert(inserts);
+    if (chatErr) console.warn("Could not save chats:", chatErr);
 
-    const usage = completion.usage;
-    const tokens = usage?.total_tokens || 0;
-    const estimatedCost = ((tokens / 1000) * 0.1).toFixed(3);
-
-    console.log(`💬 Chat-svar genererat (${tokens} tokens ≈ ${estimatedCost} SEK)`);
-
-    res.json({ reply });
-  } catch (error) {
-    console.error("❌ Chat-fel:", error);
-    res
-      .status(500)
-      .json({ error: "Ett fel uppstod vid AI-chatt-anropet." });
+    return res.json({ reply, model_used: aiResp.model, usage: aiResp.usage });
+  } catch (err) {
+    console.error("Unexpected server error (chat):", err);
+    return res.status(500).json({ error: "Internt serverfel chat", detail: err.message || String(err) });
   }
 });
 
-// --------------------------------------------------------------------
-// 🌐 TESTROUTE
-// --------------------------------------------------------------------
-app.get("/", (req, res) => {
-  res.send("🚗 Lovgrens Diagnostik API (GPT-4o) är igång!");
-});
+app.get("/", (_req, res) => res.send("AutonomeX API OK"));
 
-// --------------------------------------------------------------------
-// 🚀 STARTA SERVER
-// --------------------------------------------------------------------
 app.listen(PORT, () => {
-  console.log("──────────────────────────────────────────────");
-  console.log(`🚀 Servern körs på port ${PORT}`);
-  console.log("📡 Endpoints:");
-  console.log("   POST /api/obd/diagnose  → Felsökning");
-  console.log("   POST /api/chat           → AI-chat (Pro)");
-  console.log("🔑 API-key laddad:", process.env.OPENAI_API_KEY ? "✅" : "❌");
-  console.log("──────────────────────────────────────────────");
+  console.log("Server running on port", PORT);
 });

@@ -2,56 +2,47 @@
 <html lang="sv">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Lovgrens Diagnostik – App</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>AutonomeX – App</title>
 
-  <!-- Fonts -->
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet"/>
-
-  <!-- Styles -->
   <link rel="stylesheet" href="assets/style-app.css" />
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.38.0/dist/umd/supabase.js"></script>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
 </head>
 
 <body>
-
-  <!-- HEADER -->
   <header class="app-header">
-    <div class="container header-flex">
+    <div class="container header-row">
       <div class="brand">
-        <h1>Lovgrens Diagnostik</h1>
-        <p class="sub">AI-baserad felsökning & proffschatt</p>
+        <h1>AutonomeX</h1>
+        <p class="sub">AI-baserad diagnostik & Proffschatt</p>
       </div>
-
-      <div class="header-actions">
-        <button id="themeToggle" class="btn-icon">🌙</button>
-        <a href="index.html" class="back-link">← Till startsidan</a>
-      </div>
+      <a class="back-link" href="index.html">← Till startsidan</a>
     </div>
   </header>
 
-  <!-- MAIN GRID -->
   <main class="container app-grid">
 
-    <!-- LEFT PANEL — DIAGNOS -->
+    <!-- LEFT PANEL -->
     <section class="panel diagnose-panel">
+
       <h2>OBD2 – Felkodssök</h2>
-      <p class="muted">Fyll i felkod(er), bilmärke, årsmodell och motorkod (valfritt).</p>
 
       <form id="codeForm" class="form">
-
         <div class="form-row">
           <label for="errorCode">Felkod(er)</label>
-          <input id="errorCode" placeholder="Ex. P0420, P0171" required>
+          <input id="errorCode" type="text" placeholder="P0420, P0171" required>
         </div>
 
         <div class="form-row-inline">
-          <div>
+          <div class="small-input">
             <label for="carBrand">Märke</label>
-            <input id="carBrand" required>
+            <input id="carBrand" type="text" required>
           </div>
-          <div>
+          <div class="small-input">
             <label for="carYear">Årsmodell</label>
             <input id="carYear" type="number" required>
           </div>
@@ -59,49 +50,59 @@
 
         <div class="form-row">
           <label for="engineCode">Motorkod (valfritt)</label>
-          <input id="engineCode" placeholder="Ex. B4204T7">
+          <input id="engineCode" type="text">
         </div>
 
         <div class="form-actions">
           <button class="btn-primary" type="submit">Sök felkod</button>
-          <button class="btn-secondary" type="button" id="exportPDF">Spara PDF</button>
+          <button id="exportPDF" class="btn-secondary" type="button">Spara PDF</button>
         </div>
-
       </form>
 
-      <!-- LOADING -->
-      <div id="loading" class="loading-box" style="display:none;">
+      <div id="loading" class="spinner" style="display:none;">
         <div class="loader"></div>
-        <p>Analyserar felkod...</p>
+        <p>Analyserar...</p>
       </div>
 
-      <!-- RESULT -->
       <div id="result" class="result-box"></div>
 
-      <!-- HISTORY -->
-      <div id="history" class="history-box"></div>
+      <h3>Senaste diagnos</h3>
+      <button id="latestBtn" class="btn-secondary">Visa</button>
+      <div id="latestBox" style="margin-top:8px;"></div>
+
+      <h3>Historik</h3>
+      <div id="history"></div>
     </section>
 
-    <!-- RIGHT PANEL — CHAT -->
+    <!-- RIGHT PANEL - CHAT -->
     <aside class="panel chat-panel">
+
       <h3>AI-Mekanikern</h3>
-      <p class="muted">Svara på frågor om diagnosen eller få mer hjälp.</p>
+      <p class="muted">Ställ frågor om diagnosen eller få mer hjälp.</p>
 
       <div id="chatBox" class="chat-box"></div>
 
       <form id="chatForm" class="chat-form">
-        <input id="chatInput" type="text" placeholder="Skriv en fråga..." autocomplete="off">
-        <button class="btn-primary" type="submit">Skicka</button>
+        <input id="chatInput" type="text" placeholder="Skriv ett meddelande..." autocomplete="off">
+        <button id="chatSend" class="btn-primary" type="submit">Skicka</button>
       </form>
 
       <div class="chat-actions">
         <button id="clearChat" class="btn-link">Rensa chatt</button>
         <button id="exportChat" class="btn-link">Exportera chatt</button>
       </div>
+
     </aside>
+
   </main>
 
-  <!-- JS -->
+  <footer class="footer">
+    <div class="container footer-inner">
+      © 2025 AutonomeX
+    </div>
+  </footer>
+
   <script src="assets/js/app.js" defer></script>
 </body>
 </html>
+
